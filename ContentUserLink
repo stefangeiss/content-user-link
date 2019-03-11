@@ -1,0 +1,235 @@
+
+
+#####################################################
+##### C--U-L 
+##### CONTENT--USER-LINK
+##### DEVELOPED BY
+##### STEFAN GEISS
+
+
+
+##################################################### 
+##### DISCLAIMER
+##### I AM AWARE THAT THE EXTENSIVE FOR-LOOPING IS NOT THE MOST ELEGANT STRUCTURE IN R 
+##### BUT SINCE THIS IS NOT A VERY COMPUTATION RESOURCE INTENSIVE TASK, I PREFER THIS PROGRAMMING 
+##### FOR ITS EASE OF COMPREHENSION. IF YOU WANT TO MAKE IT MORE EFFICIENT, JUST GO AHEAD.
+
+
+
+#####################################################
+##### PREPARING THE DATA FOR USING CONTENT--USER-LINK
+
+###	THE BASIC UNIT IS A SURVEY RESPONSE (E.G. ONE INTERVIEW WITH ONE PARTICIPANT; 
+#	IF IT IS A PANEL STUDY, ONE UNIT PER WAVE AND RESPONDENT SHOULD BE CONSTRUCTED ('LONG' RATHER THAN 'WIDE' FORMAT)
+
+###	1) issue.interview IS A VECTOR THAT GIVES THE ISSUE THE SURVEY RESPONSE UNIT (TO WHICH CONTENT DATA SHOULD BE ADDED) DEALS WITH.
+### 2) issue.content IS A VECTOR THAT GIVES THE ISSUE THE CONTENT ANALYSIS UNIT (THAT SHOULD BE COMBINED WITH THE SURVEY DATA) DEALS WITH.
+### 3) user IS A LIST THAT SPECIFIES WHICH OF THE OUTLETS WERE USED WITH WHAT FREQUENCY (VALUES SHOULD BE BETWEEN 0 AND 1).
+#	EACH ELEMENT OF THE LIST SHOULD BE NAMED (E.G. 'WASHPOST' FOR WASHINGTON POST), EACH LIST ELEMENT SHOULD BE A VECTOR WITH ONE ENTRY PER SURVEY RESPONSE UNIT.
+### 4) media IS A LIST THAT SPECIFIES WHICH OF THE ARTICLES WERE PUBLISHED IN WHICH OUTLET. EACH LIST ELEMENT SHOULD BE NAMED AS THE user LIST ELEMENTS
+#	(E.G. WASHPOST FOR WASHINGTON POST) AND EACH LIST ELEMENT SHOULD BE A VECTOR AS LONG AS THE NUMBER OF CONTENT ANALYSIS UNITS. IT IS IMPORTANT THAT THE NAMES
+#   IN user AND media ARE EXACTLY THE SAME.
+### 5) outlets IS A CHARACTER VECTOR PROVIDING THE NAMES OF THE OUTLETS THAT SHOULD BE CONSIDERED. IT MUST BE THE SAME AS THE NAMES OF THE LIST ELEMENTS OF user AND media,
+#	OR A SUBSET OF THOSE NAMES. 
+### 6) doi IS A VECTOR GIVING THE DAY OF THE INTERVIEW, PREFERRED UNIT IS "DAY OF YEAR" (1-366)
+### 7) id.start A VECTOR SPECIFYING THE DAY THE STUDY TIME FRAME STARTS FOR THE RESPECTIVE SURVEY RESPONSE UNIT (FIRST DAY FOR RESPONSE UNIT)
+### 8) start A VECTOR LENGTH 1 DEFINING THE FIRST DAY OF THE STUDY. PREFERRED UNIT IS "DAY OF YEAR" (1-366).
+### 9) finish A VECTOR SPECIFYING THE DAY THE STUDY TIME FRAME ENDS FOR THE RESPECTIVE SURVEY RESPONSE UNIT (LAST DAY OF STUDY)
+### 10) delay NOT YET IMPLEMENTED. FOR INCLUDING A DELAY-ATTACK-SUSTAIN-DECAY ENVELOPE LATER.
+### 11) attack IS CURRENTLY (NOT YET FULLY IMPLEMENTED) A VECTOR OF "1"S AS LONG AS THE NUMBER OF DAYS OF NEWS CONTENT TO BE CONSIDERED PRIOR TO THE TIME OF INTERVIEW. 
+#	NOT YET IMPLEMENTED. FOR INCLUDING A DELAY-ATTACK-SUSTAIN-DECAY ENVELOPE LATER.
+### 12) sustain NOT YET IMPLEMENTED. FOR INCLUDING A DELAY-ATTACK-SUSTAIN-DECAY ENVELOPE LATER.
+### 13) decay NOT YET IMPLEMENTED. FOR INCLUDING A DELAY-ATTACK-SUSTAIN-DECAY ENVELOPE LATER.
+### 14) pubdate A VECTOR SPECIFYING THE DAY THE CONTENT ANALYSIS UNIT WAS PUBLISHED, PREFERRED UNIT IS "DAY OF YEAR" (1-366)
+### 15) shape A CHARACTER VECTOR LENGTH 1. "NONE" FOR NO ENVELOPE, "LINEAR" FOR LINEAR WEAR OUT, "ACCELERATE" FOR SLOW WEAROUT ACCELERATING, "DECELERATE" FOR FAST WEAROUT DECELERATING.
+### 16) voicontent IS THE DATA FRAME CONTAINING THE CONTENT ANALYSIS UNITS TO COMBINE WITH THE SURVEY RESPONSE DATA
+### 17) timeweight IS THE TIME/ENVELOPE WEIGHT GENERATED FROM THE timew FUNCTION
+### 18) medweight IS THE SALIENCE/LENGTH WEIGHT GENERATED FROM THE medw FUNCTION
+### 19) useweight IS THE USER WEIGHT GENERATED FROM THE usew FUNCTION
+### 20) issueweight IS THE ISSUE WEIGHT GENERATED FROM THE issuew FUNCTION
+### 21) output IS A LIST OF THE SUMMARY STATISTICS THAT SHOULD BE ADDED FOR EACH CONTENT ANALYSIS VARIABLE. CURRENTLY INCLUDES THE FUNCTIONS 
+#	"sum", "mean", "pos", "neg", "sd" (SUM, MEAN, SUM OF POSITIVE VALUES, SUM OF NEGATIVE VALUES, STANDARD DEVIATION).
+### 22) data IS THE SURVEY RESPONSE DATA FRAME TO WHICH NEW CONTENT--USER-LINKS SHOULD BE ADDED
+
+doi,id.start,start,finish,delay,attack,sustain,decay,pubdate,shape
+
+
+
+#####################################################
+##### THE FUNCTIONS FOR CONTENT--USER-LINK
+
+
+
+### issuew IS A FUNCTION THAT IS MATCHING THE ISSUE OF A CONTENT ANALYSIS UNIT WITH A SURVEY RESPONSE UNIT
+### EXAMPLE: EACH PERSON WAS INTERVIEWED ABOUT THREE DIFFERENT ISSUES, SO THERE ARE THREE RESPONSES PER PERSON AND PANEL WAVE.
+#   THIS FUNCTION CHECKS WHETHER THE CONTENT ANALYSIS UNIT (NEWS STORY) AND THE RESPONSE UNIT (INTERVIEW) WERE ADDRESSING
+#	THE SAME ISSUE. IF THE ISSUE IS THE SAME, THE CONTENT IS WEIGHTED BY 1 (FULL WEIGHT). IF THE ISSUES DO NOT MATCH, THE CONTENT
+#	IS WEIGHTED BY 0 (COMPLETELY DROPPED).
+
+issuew <- function(issue.interview,issue.content){
+	issuew <- matrix(NA,nrow=length(issue.interview),ncol=length(issue.content))
+	for (i in 1:dim(issuew)[1])
+	{
+		for (j in 1:dim(issuew)[2])
+		{
+		ifelse(issue.interview[i]==issue.content[j],issuew[i,j] <- 1,issuew[i,j] <- 0)
+		}
+	}
+	return(issuew)
+}
+
+
+
+### medw IS A FUNCTION THAT WEIGHTS CONTENT ANALYSIS UNITS BASED ON HOW MUCH THE RESPONDENT USED THE OUTLET IN WHICH
+#	THE NEWS STORY WAS PUBLISHED. FOR INSTANCE, HAVING USED ALL AVAILABLE EDITIONS IN THE RELEVANT TIME PERIOD WOULD LEAD
+#	TO A WEIGHT OF 1 (FULL WEIGHT), USING EVERY SECOND EDITION WOULD LEAD TO A WEIGHT OF 0.5 (HALF WEIGHT); NOT USING
+#	THE RELEVANT OUTLET AT ALL RESULTS IN A WEIGHT OF 0 (COMPLETELY DROPPED).
+
+medw <- function(user,media,outlets){
+	medw <- matrix(NA,nrow=length(user[[1]]),ncol=length(media[[1]]))
+	outletnumber <- length(outlets)
+	for (j in 1:outletnumber)
+	{
+	user[[j]] <- replace(user[[j]],is.na(user[[j]]),0)
+	}
+	for (i in 1:length(user[[1]]))
+	{
+	for (j in 1:outletnumber)
+		{
+		medw[i,] <- ifelse(is.na((medw[i,])),user[[outlets[j]]][i]*media[[outlets[j]]],medw[i,]+user[[outlets[j]]][i]*media[[outlets[j]]])
+		}	
+	}
+return(medw)
+}
+
+
+
+### timew IS A FUNCTION THAT USES THAT ASSESSES WHETHER THE NEWS STORY UNIT AND THE SURVEY RESPONSE UNIT FIT THE TIME FRAME OF THE STUDY.
+
+timew <- function(doi,id.start,start,finish,delay,attack,sustain,decay,pubdate,shape){
+	pub <- pubdate-start
+	pub <- ifelse(pub<0,0,pub)
+	raweffectcurve <- c(delay,attack,sustain,decay)
+	r <- raweffectcurve 
+	if (shape=="none") 	{r <- c(0,rep(1,times=length(r)))}
+	if (shape=="linear") 	{r <- c(0:length(r))/length(r)}
+	if (shape=="accelerate"){r <- log(c(0:length(r))/length(r))
+					 r <- r-min(r[2:length(r)])	
+					 r <- r/max(r)
+					 r[1] <- 0}
+	if (shape=="decelerate"){r <- exp(c(0:length(r))/(0.25*length(r)))-1
+					 r <- r/max(r)}
+	raweffectcurve <- r
+	baseeffectcurve <- c(raweffectcurve-min(raweffectcurve))
+	effectcurve <- c(baseeffectcurve/max(baseeffectcurve))
+	effectlength <- length(effectcurve)
+	studylength <- finish-start
+	last <- doi-start
+	first <- id.start-start
+	id.length <- last-first
+	id.initialzeros <- ifelse(id.length-length(effectcurve)>0,id.length-length(effectcurve),0)
+
+	id.effectcurve <- NULL
+	id.timecurve <- matrix(NA,nrow=length(doi),ncol=studylength)
+	for (i in 1:length(doi))
+	{
+	if(id.initialzeros[i]>0){id.effectcurve[[i]] <- c(rep(0,times=id.initialzeros[i]),effectcurve[ifelse((id.length[i]-length(effectcurve))>0,1,abs((id.length[i]-length(effectcurve)))+1):length(effectcurve)])}
+	if(id.initialzeros[i]==0 & last[i]!=0){id.effectcurve[[i]] <- c(effectcurve[ifelse((id.length[i]-length(effectcurve))>0,1,abs((id.length[i]-length(effectcurve)))+1):length(effectcurve)])}
+	if(id.initialzeros[i]==0 & last[i]==0){id.effectcurve[[i]] <- NULL}
+	}
+	for (i in 1:length(doi))
+	{
+	if(first[i]>0){id.timecurve[i,] <- c(rep(0,times=c(first[i])),id.effectcurve[[i]],rep(0,times=c(studylength-last[i])))}
+	if(first[i]==0){id.timecurve[i,] <- c(id.effectcurve[[i]],rep(0,times=c(studylength-last[i])))}
+	}
+	timeweight <- matrix(NA,nrow=length(doi),ncol=length(pub))
+	for (i in 1:length(doi))
+	{
+		for (j in 1:length(pub))
+		{
+		timeweight[i,j] <- ifelse(pub[j]>0,id.timecurve[i,pub[j]],0)
+		}
+	}
+return(timeweight)
+}
+
+
+
+### datacombine IS THE PRINCIPAL FUNCTION FOR COMBINING CONTENT ANALYSIS AND SURVEY RESPONSE DATA.
+#	IT NEEDS THE CONTENT ANALYSIS DATA, PREVIOUSLY CALCULATED timew, medw, usew, issuew RESULTS AND A SELECTION OF DESIRED outputS. 
+#	USUALLY, IT IS CALLED INDIRECTLY THROUGH A CALL TO linkData.
+
+datacombine <- function(voicontent,timeweight,medweight,useweight,issueweight,output){
+	require(matrixStats)
+	ca <- voicontent
+	cax <- as.matrix(ca)
+	caxi <- as.numeric(cax)
+	dim(caxi) <- c(dim(ca)[1],dim(ca)[2])
+	dimnames(caxi) <- dimnames(ca)
+	varnames <- colnames(caxi)
+	overallweight <- medweight*timeweight*issueweight
+	participants <- dim(overallweight)[1]
+	units <- dim(overallweight)[2]
+
+	for (i in 1:participants)
+	{
+		overallweight[i,] <- (overallweight[i,]*useweight)
+	}
+
+	results.sum <- matrix(NA,nrow=participants,ncol=length(varnames))
+	results.mean <- matrix(NA,nrow=participants,ncol=length(varnames))
+	results.pos <- matrix(NA,nrow=participants,ncol=length(varnames))
+	results.neg <- matrix(NA,nrow=participants,ncol=length(varnames))
+	results.sd <- matrix(NA,nrow=participants,ncol=length(varnames))
+
+	colnames(results.sum) <- varnames
+	colnames(results.mean) <- varnames
+	colnames(results.pos) <- varnames
+	colnames(results.neg) <- varnames
+	colnames(results.sd) <- varnames
+
+	for (i in 1:participants)
+	{
+		if(output$sum==TRUE) {
+			results.sum[i,] <- colSums(caxi*overallweight[i,],na.rm=TRUE)
+		}
+		if(output$mean==TRUE) {
+			results.mean[i,] <- colWeightedMeans(caxi,overallweight[i,],na.rm=TRUE)
+		}
+		if(output$pos==TRUE) {
+			results.pos[i,] <- colSums((caxi>0)*overallweight[i,],na.rm=TRUE)
+		}
+		if(output$neg==TRUE) {
+			results.neg[i,] <- colSums((caxi<0)*overallweight[i,],na.rm=TRUE)
+		}
+		if(output$sd==TRUE) {
+			results.sd[i,] <- colWeightedSds(caxi,overallweight[i,],na.rm=TRUE)
+		}
+	}
+	result <- list(weightedSums=results.sum,weightedMeans=results.mean,weightedPositives=results.pos,weightedNegatives=results.neg,weightedSDs=results.sd)
+return(result)
+}
+
+
+### linkData BUNDLES THE ABOVE FUNCTION AND RETURNS A FULL DATA FRAME.
+
+linkData<- function(voicontent,timeweight,medweight,useweight,issueweight,output,data){
+	require(car)
+	rc <- datacombine(voicontent,timeweight,medweight,useweight,issueweight,output)
+	rd <- data.frame(data,		frqp=rowMeans(rc$weightedSums[,c(1,3,5,7,9)]),
+						frqn=rowMeans(rc$weightedSums[,c(2,4,6,8,10)]),
+						tdz=rowMeans(rc$weightedMean[,1:10]),	
+						var=rowMeans(rc$weightedSDs[,1:10]),
+						sy=rc$weightedMean[,11],
+						bg=rc$weightedMean[,12],
+						br=rc$weightedMean[,13],
+						av=rc$weightedMean[,14])						
+	cd <- rd
+	cd$tdz <- Recode(rd$tdz,c("NaN=0;NA=0"))
+	cd$var <- Recode(rd$var,c("NaN=0;NA=0"))
+	cd$av <- Recode(rd$av,c("NaN=0;NA=0"))
+	cd$sy <- Recode(rd$sy,c("NaN=0;NA=0"))
+	cd$bg <- Recode(rd$bg,c("NaN=0;NA=0"))
+	cd$br <- Recode(rd$br,c("NaN=0;NA=0"))
+	return(cd)
+}
